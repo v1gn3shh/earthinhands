@@ -197,37 +197,58 @@ renderer.domElement.addEventListener("touchend", () => lastDist = null);
 
 function dist(a,b){ return Math.hypot(a.x-b.x,a.y-b.y); }
 
+function isPinching(hand){
+  return dist(hand[4], hand[8]) < 0.075;
+}
+
+function handOpenness(hand){
+  return (
+    dist(hand[0],hand[8]) +
+    dist(hand[0],hand[12]) +
+    dist(hand[0],hand[16]) +
+    dist(hand[0],hand[20])
+  );
+}
+
 function animate(){
   requestAnimationFrame(animate);
 
   if (hand) {
     const wrist = hand[0];
-    const pinch = dist(hand[4], hand[8]);
-    const openness =
-      dist(hand[0],hand[8]) +
-      dist(hand[0],hand[12]) +
-      dist(hand[0],hand[16]) +
-      dist(hand[0],hand[20]);
+    const pinch = isPinching(hand);
+    const open = handOpenness(hand);
 
-    if (pinch < 0.08) {
+    /* ---------- ROTATION (PINCH ONLY) ---------- */
+    if (pinch) {
       if (lastX !== null) {
-        rotY += (wrist.x-lastX)*6;
-        rotX += (wrist.y-lastY)*6;
+        rotY += (wrist.x - lastX) * 6;
+        rotX += (wrist.y - lastY) * 6;
       }
-      lastX=wrist.x; lastY=wrist.y;
-    } else lastX=lastY=null;
+      lastX = wrist.x;
+      lastY = wrist.y;
+    } else {
+      lastX = lastY = null;
+    }
 
-    if (openness < 1.4) targetZoom -= 0.05;
-    if (openness > 2.0) targetZoom += 0.05;
+    /* ---------- ZOOM (ONLY WHEN NOT PINCHING) ---------- */
+    if (!pinch) {
+      if (open < 1.35) {
+        targetZoom -= 0.05;   // fist → zoom in
+      }
+      if (open > 2.1) {
+        targetZoom += 0.05;   // open palm → zoom out
+      }
+    }
   }
 
-  targetZoom = THREE.MathUtils.clamp(targetZoom,2.6,7);
-  camera3D.position.z += (targetZoom-camera3D.position.z)*0.12;
-  earth.rotation.x += (rotX-earth.rotation.x)*0.1;
-  earth.rotation.y += (rotY-earth.rotation.y)*0.1;
+  targetZoom = THREE.MathUtils.clamp(targetZoom, 2.6, 7);
+  camera3D.position.z += (targetZoom - camera3D.position.z) * 0.12;
+  earth.rotation.x += (rotX - earth.rotation.x) * 0.1;
+  earth.rotation.y += (rotY - earth.rotation.y) * 0.1;
 
-  renderer.render(scene,camera3D);
+  renderer.render(scene, camera3D);
 }
+
 
 animate();
 
@@ -240,3 +261,4 @@ window.addEventListener("resize",()=>{
 
 </body>
 </html>
+
