@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Hand Controlled Earth</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Control a realistic 3D Earth using your hands in real time">
+
+<style>
+  body {
+    margin: 0;
+    overflow: hidden;
+    background: radial-gradient(circle at top, #061a40, #000);
+    font-family: Arial, sans-serif;
+  }
+
+  video {
+    position: absolute;
+    bottom: 15px;
+    right: 15px;
+    width: 160px;
+    border-radius: 12px;
+    opacity: 0.85;
+    border: 2px solid rgba(255,255,255,0.3);
+    z-index: 10;
+  }
+
+  #ui {
+    position: absolute;
+    top: 20px;
+    width: 100%;
+    text-align: center;
+    color: white;
+    font-size: 14px;
+    opacity: 0.9;
+    z-index: 10;
+  }
+
+  #footer {
+    position: absolute;
+    bottom: 10px;
+    left: 15px;
+    color: #aaa;
+    font-size: 11px;
+    opacity: 0.6;
+    z-index: 10;
+  }
+</style>
+</head>
+
+<body>
+
+<div id="ui">✋ Right Hand → Rotate Earth | 🤏 Left Hand → Zoom</div>
+<div id="footer">Textures © NASA | Hand Tracking via MediaPipe | Three.js</div>
+<video id="video" autoplay playsinline></video>
+
+<!-- THREE.JS -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+
+<!-- MEDIAPIPE -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+<script>
+/* ================= THREE.JS SCENE ================= */
+
+const scene = new THREE.Scene();
+
+const camera3D = new THREE.PerspectiveCamera(
+  45,
+  window.innerWidth / window.innerHeight,
+  0.1,
+  1000
+);
+camera3D.position.z = 4;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+document.body.appendChild(renderer.domElement);
+
+/* ================= LIGHTING ================= */
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.35));
+
+const sunLight = new THREE.DirectionalLight(0xffffff, 1.4);
+sunLight.position.set(5, 3, 5);
+scene.add(sunLight);
+
+/* ================= EARTH ================= */
+
+const loader = new THREE.TextureLoader();
+
+const earthMaterial = new THREE.MeshPhongMaterial({
+  map: loader.load("https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg"),
+  emissiveMap: loader.load("https://threejs.org/examples/textures/planets/earth_lights_2048.png"),
+  emissiveIntensity: 0.8,
+  shininess: 25
+});
+
+const earth = new THREE.Mesh(
+  new THREE.SphereGeometry(1.5, 128, 128),
+  earthMaterial
+);
+scene.add(earth);
+
+/* ================= CLOUDS ================= */
+
+const clouds = new THREE.Mesh(
+  new THREE.SphereGeometry(1.51, 128, 128),
+  new THREE.MeshStandardMaterial({
+    map: loader.load("https://threejs.org/examples/textures/planets/earth_clouds_1024.png"),
+    transparent: true,
+    opacity: 0.55
+  })
+);
+scene.add(clouds);
+
+/* ================= MEDIAPIPE HANDS ================= */
+
+const video = document.getElementById("video");
+
+const hands = new Hands({
+  locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+});
+
+hands.setOptions({
+  maxNumHands: 2,
+  modelComplexity: 1,
+  minDetectionConfidence: 0.75,
+  minTrackingConfidence: 0.75
+});
+
+let leftHand = null;
+let rightHand = null;
+let targetZoom = 4;
+
+hands.onResults(results => {
+  leftHand = rightHand = null;
+  if (!results.multiHandLandmarks) return;
+
+  results.multiHandedness.forEach((hand, i) => {
+    if (hand.label === "Left") leftHand = results.multiHandLandmarks[i];
+    if (hand.label === "Right") rightHand = results.multiHandLandmarks[i];
+  });
+});
+
+const cam = new Camera(video, {
+  onFrame: async () => {
+    await hands.send({ image: video });
+  },
+  width: 640,
+  height: 480
+});
+cam.start();
+
+/* ================= CONTROLS ================= */
+
+function distance(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+let rotX = 0, rotY = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  // RIGHT HAND → ROTATION
+  if (rightHand) {
+    rotY += (rightHand[0].x - 0.5) * 0.03;
+    rotX += (rightHand[0].y - 0.5) * 0.03;
+  }
+
+  // LEFT HAND → ZOOM
+  if (leftHand) {
+    const pinch = distance(leftHand[4], leftHand[8]);
+    targetZoom = THREE.MathUtils.clamp(6 - pinch * 10, 2.5, 7);
+  }
+
+  camera3D.position.z += (targetZoom - camera3D.position.z) * 0.08;
+
+  earth.rotation.x += (rotX - earth.rotation.x) * 0.05;
+  earth.rotation.y += (rotY - earth.rotation.y) * 0.05;
+
+  clouds.rotation.y += 0.0008;
+
+  renderer.render(scene, camera3D);
+}
+
+animate();
+
+/* ================= RESPONSIVE ================= */
+
+window.addEventListener("resize", () => {
+  camera3D.aspect = window.innerWidth / window.innerHeight;
+  camera3D.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+
+</body>
+</html>
